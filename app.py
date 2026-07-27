@@ -69,8 +69,8 @@ def main_dashboard():
         st.write("Gestión de partida doble, libro diario y estados financieros adaptados a normativa local.")
         
     elif menu == "Facturación DTE":
-        st.title("Facturación Electrónica (DTE)")
-        st.write("Emisión, control y registro de Documentos Tributarios Electrónicos.")
+        from modules import facturacion
+        facturacion.render()
         
     elif menu == "Planillas":
         st.title("Cálculo de Planillas")
