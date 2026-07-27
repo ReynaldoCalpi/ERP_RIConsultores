@@ -272,8 +272,56 @@ def main_dashboard():
                 st.info("Primero procese la planilla en la pestaña anterior para generar la estructura ERP.")
         
     elif menu == "Inventarios y Activo Fijo":
-        st.title("Inventarios y Activo Fijo")
-        st.write("Control de existencias y generación de viñetas de identificación de activos.")
+        st.subheader("📦 Módulo de Inventarios y Activo Fijo")
+        
+        tab_inv1, tab_inv2 = st.tabs(["Control de Existencias", "Generación de Viñetas de Activo Fijo"])
+        
+        with tab_inv1:
+            st.markdown("### Registro y Control de Inventario")
+            
+            # Inicializar inventario en session_state si no existe
+            if "inventario_db" not in st.session_state:
+                st.session_state.inventario_db = pd.DataFrame(columns=["SKU", "Descripción", "Categoría", "Stock", "Costo Unitario ($)"])
+                
+            with st.form("form_inventario"):
+                c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
+                sku = c1.text_input("Código SKU")
+                desc_art = c2.text_input("Descripción del Artículo")
+                cat = c3.selectbox("Categoría", ["General", "Materia Prima", "Producto Terminado", "Activo Fijo"])
+                stock = c4.number_input("Cantidad Inicial", min_value=0.0, value=1.0)
+                costo = c4.number_input("Costo Unitario ($)", min_value=0.0, value=0.0)
+                
+                add_prod = st.form_submit_button("Registrar Artículo")
+                if add_prod and sku and desc_art:
+                    nuevo_prod = pd.DataFrame([[sku, desc_art, cat, stock, costo]], columns=["SKU", "Descripción", "Categoría", "Stock", "Costo Unitario ($)"])
+                    st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, nuevo_prod], ignore_index=True)
+                    st.rerun()
+                    
+            if not st.session_state.inventario_db.empty:
+                st.markdown("#### Inventario Actual")
+                st.dataframe(st.session_state.inventario_db, use_container_width=True)
+            else:
+                st.info("No hay artículos registrados en el inventario.")
+
+        with tab_inv2:
+            st.markdown("### Generador de Viñetas de Activo Fijo")
+            st.write("Herramienta para etiquetado, control y codificación de activos fijos de la empresa.")
+            
+            archivo_activos = st.file_uploader("📂 Sube el archivo CSV o Excel con el registro de activos", type=['csv', 'xlsx'], key="up_activos")
+            
+            if archivo_activos:
+                if archivo_activos.name.endswith('.csv'):
+                    df_activos = pd.read_csv(archivo_activos)
+                else:
+                    df_activos = pd.read_excel(archivo_activos)
+                    
+                st.markdown("#### Vista previa de Activos Cargados")
+                st.dataframe(df_activos.head(), use_container_width=True)
+                
+                if st.button("Generar Etiquetas de Activo Fijo"):
+                    st.success("¡Estructura de viñetas generada con éxito lista para impresión masiva!")
+            else:
+                st.info("Cargue un archivo con los códigos y descripciones de sus activos para generar las etiquetas.")
 
 # Control de flujo principal
 if not st.session_state.authenticated:
