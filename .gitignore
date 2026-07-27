@@ -1,0 +1,8 @@
+# Git ignore para Python y Streamlit
+__pycache__/
+*.py[cod]
+*$py.class
+.streamlit/secrets.toml
+.venv/
+venv/
+ENV/
