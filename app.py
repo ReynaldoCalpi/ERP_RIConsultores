@@ -16,6 +16,23 @@ if "authenticated" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = ""
 
+# Base de datos de perfiles de empresas por usuario/NIT
+if "empresas_config" not in st.session_state:
+    st.session_state.empresas_config = {
+        "06140806831121": {
+            "razon_social": "RI Consultores S.A. de C.V.",
+            "nombre_comercial": "RI Consultores",
+            "nit": "0614-080683-112-1",
+            "nrc": "123456-7",
+            "giro": "Servicios de Contabilidad y Auditoría",
+            "direccion": "San Salvador, El Salvador",
+            "telefono": "+503 2222-2222",
+            "correo": "contacto@riconsultores.com",
+            "web": "www.riconsultores.com",
+            "token_mh": ""
+        }
+    }
+
 if "inventario_db" not in st.session_state:
     st.session_state.inventario_db = pd.DataFrame([
         {
@@ -61,6 +78,20 @@ def login_screen():
                 if user and password: 
                     st.session_state.authenticated = True
                     st.session_state.username = user
+                    # Si el usuario es nuevo, inicializamos su perfil por defecto
+                    if user not in st.session_state.empresas_config:
+                        st.session_state.empresas_config[user] = {
+                            "razon_social": f"Empresa de {user}",
+                            "nombre_comercial": "Mi Negocio",
+                            "nit": user,
+                            "nrc": "000000-0",
+                            "giro": "Comercio General",
+                            "direccion": "El Salvador",
+                            "telefono": "0000-0000",
+                            "correo": "correo@empresa.com",
+                            "web": "www.empresa.com",
+                            "token_mh": ""
+                        }
                     st.rerun()
                 else:
                     st.error("Por favor, ingrese sus credenciales.")
@@ -69,7 +100,10 @@ def login_screen():
 def render_facturacion():
     st.subheader("🧾 Emisión y Control de Documentos Tributarios Electrónicos (DTE)")
     
-    tab1, tab2, tab3 = st.tabs(["Emisión de DTE", "Historial y Sello", "Configuración Emisor"])
+    # Obtenemos la configuración de la empresa del usuario actual
+    config_actual = st.session_state.empresas_config.get(st.session_state.username, {})
+    
+    tab1, tab2, tab3 = st.tabs(["Emisión de DTE", "Historial y Sello", "⚙️ Configuración de Empresa (Emisor)"])
     
     with tab1:
         st.markdown("### Generar Nuevo Documento (Descuenta Stock Automáticamente)")
@@ -94,7 +128,6 @@ def render_facturacion():
             st.warning("No hay productos en el inventario.")
         else:
             with st.form("form_item_inventario"):
-                # Selector optimizado para lectura de SKU por scanner o búsqueda manual
                 opciones_sku = st.session_state.inventario_db["SKU"] + " - " + st.session_state.inventario_db["Descripción"]
                 prod_seleccionado = st.selectbox("Seleccionar Artículo o Escanear SKU", options=opciones_sku)
                 
@@ -149,13 +182,17 @@ def render_facturacion():
                     st.rerun()
                     
             with col_acciones_dte2:
-                # Botón de Ticket Preliminar Térmico (80mm)
+                # Ticket Preliminar con los datos dinámicos configurados por el cliente
                 if st.button("🖨️ Imprimir Ticket Preliminar"):
                     ticket_html = f"""
-                    <div style="width: 300px; font-family: monospace; font-size: 12px; padding: 10px; border: 1px dashed #333;">
-                        <h3 style="text-align: center; margin: 0;">RI CONTOULORES S.A.</h3>
-                        <p style="text-align: center; margin: 0;">TICKET PRELIMINAR DE VENTA</p>
+                    <div style="width: 300px; font-family: monospace; font-size: 11px; padding: 10px; border: 1px dashed #333;">
+                        <h3 style="text-align: center; margin: 0;">{config_actual.get('nombre_comercial', 'EMPRESA')}</h3>
+                        <p style="text-align: center; margin: 0;">{config_actual.get('razon_social', '')}</p>
+                        <p style="text-align: center; margin: 0;">NIT: {config_actual.get('nit', '')} | NRC: {config_actual.get('nrc', '')}</p>
+                        <p style="text-align: center; margin: 0;">{config_actual.get('direccion', '')}</p>
+                        <p style="text-align: center; margin: 0;">Tel: {config_actual.get('telefono', '')} | Web: {config_actual.get('web', '')}</p>
                         <hr>
+                        <p style="text-align: center; margin: 0; font-weight: bold;">TICKET PRELIMINAR DE VENTA</p>
                         <p><b>Cliente:</b> {cliente_nombre or 'Consumidor Final'}</p>
                         <p><b>Fecha:</b> {fecha_emision}</p>
                         <hr>
@@ -165,17 +202,54 @@ def render_facturacion():
                     ticket_html += f"""
                         <hr>
                         <h4 style="text-align: right; margin: 0;">TOTAL: ${total_pagar:,.2f}</h4>
-                        <p style="text-align: center; margin-top: 10px;">Documento sin validez fiscal</p>
+                        <p style="text-align: center; margin-top: 10px; font-size: 9px;">Documento sin validez fiscal - RI ERP Cloud</p>
                     </div>
                     <script>window.print();</script>
                     """
-                    st.components.v1.html(ticket_html, height=400)
+                    st.components.v1.html(ticket_html, height=450)
 
     with tab2:
         st.markdown("### Historial de Documentos Emitidos")
+
     with tab3:
-        st.markdown("### Parámetros de Transmisión")
-        st.text_input("API Key / Token MH", type="password")
+        st.markdown("### ⚙️ Configuración del Perfil de Empresa y Datos del Emisor")
+        st.info("Estos datos aparecerán automáticamente en los encabezados de tus facturas, tickets y documentos tributarios.")
+        
+        with st.form("form_config_empresa"):
+            c_e1, c_e2 = st.columns(2)
+            rs = c_e1.text_input("Razón Social", value=config_actual.get("razon_social", ""))
+            nc = c_e2.text_input("Nombre Comercial", value=config_actual.get("nombre_comercial", ""))
+            
+            c_e3, c_e4 = st.columns(2)
+            nit_emp = c_e3.text_input("NIT de la Empresa", value=config_actual.get("nit", ""))
+            nrc_emp = c_e4.text_input("NRC (Número de Registro)", value=config_actual.get("nrc", ""))
+            
+            giro_emp = st.text_input("Giro / Actividad Económica", value=config_actual.get("giro", ""))
+            dir_emp = st.text_input("Dirección Fiscal", value=config_actual.get("direccion", ""))
+            
+            c_e5, c_e6, c_e7 = st.columns(3)
+            tel_emp = c_e5.text_input("Teléfono de Contacto", value=config_actual.get("telefono", ""))
+            mail_emp = c_e6.text_input("Correo Electrónico", value=config_actual.get("correo", ""))
+            web_emp = c_e7.text_input("Sitio Web", value=config_actual.get("web", ""))
+            
+            token_mh = st.text_input("Token / API Key de Transmisión Ministerio de Hacienda", type="password", value=config_actual.get("token_mh", ""))
+            
+            guardar_conf = st.form_submit_button("Guardar Configuración de Empresa", type="primary")
+            if guardar_conf:
+                st.session_state.empresas_config[st.session_state.username] = {
+                    "razon_social": rs,
+                    "nombre_comercial": nc,
+                    "nit": nit_emp,
+                    "nrc": nrc_emp,
+                    "giro": giro_emp,
+                    "direccion": dir_emp,
+                    "telefono": tel_emp,
+                    "correo": mail_emp,
+                    "web": web_emp,
+                    "token_mh": token_mh
+                }
+                st.success("¡Datos de la empresa actualizados correctamente!")
+                st.rerun()
 
 
 def render_contabilidad():
@@ -288,7 +362,6 @@ def render_inventarios():
                 st.dataframe(df_upload.head(), use_container_width=True)
                 
                 if st.button("Confirmar e Importar al Inventario General", type="primary"):
-                    # Validar o fusionar columnas requeridas
                     for col in columnas_requeridas:
                         if col not in df_upload.columns and col != "SKU":
                             df_upload[col] = 0.0
