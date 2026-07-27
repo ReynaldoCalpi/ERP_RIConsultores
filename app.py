@@ -133,8 +133,66 @@ def main_dashboard():
         col4.metric("Activos Registrados", "0", "OK")
 
     elif menu == "Contabilidad":
-        st.title("Módulo de Contabilidad")
-        st.write("Gestión de partida doble, libro diario y estados financieros adaptados a normativa local.")
+        st.subheader("📊 Módulo de Contabilidad y Partida Doble")
+        
+        tab_c1, tab_c2, tab_c3 = st.tabs(["Registro de Partidas", "Libro Diario", "Estados Financieros"])
+        
+        with tab_c1:
+            st.markdown("### Nueva Partida Contable")
+            
+            # Inicializar el libro diario en session_state si no existe
+            if "libro_diario" not in st.session_state:
+                st.session_state.libro_diario = pd.DataFrame(columns=["Fecha", "Código", "Cuenta", "Debe", "Haber"])
+            
+            fecha_partida = st.date_input("Fecha de Operación", datetime.now(), key="fecha_p")
+            concepto = st.text_input("Concepto General de la Partida")
+            
+            st.markdown("#### Detalle de Cuentas")
+            with st.form("form_asiento"):
+                col_c1, col_c2, col_c3, col_c4 = st.columns([1, 2, 1, 1])
+                cod_cuenta = col_c1.text_input("Código", value="1101")
+                nom_cuenta = col_c2.text_input("Nombre de Cuenta")
+                debe = col_c3.number_input("Debe ($)", min_value=0.0, value=0.0)
+                haber = col_c4.number_input("Haber ($)", min_value=0.0, value=0.0)
+                
+                add_linea = st.form_submit_button("Agregar Línea al Asiento")
+                
+                if add_linea and nom_cuenta:
+                    nueva_linea = pd.DataFrame([[fecha_partida, cod_cuenta, nom_cuenta, debe, haber]], 
+                                               columns=["Fecha", "Código", "Cuenta", "Debe", "Haber"])
+                    st.session_state.libro_diario = pd.concat([st.session_state.libro_diario, nueva_linea], ignore_index=True)
+                    st.rerun()
+            
+            if not st.session_state.libro_diario.empty:
+                st.markdown("#### Borrador de Partida Actual")
+                st.dataframe(st.session_state.libro_diario, use_container_width=True)
+                
+                total_debe = st.session_state.libro_diario["Debe"].sum()
+                total_haber = st.session_state.libro_diario["Haber"].sum()
+                
+                col_t1, col_t2, col_t3 = st.columns(3)
+                col_t1.metric("Total Debe", f"${total_debe:,.2f}")
+                col_t2.metric("Total Haber", f"${total_haber:,.2f}")
+                
+                diferencia = abs(total_debe - total_haber)
+                if diferencia < 0.01:
+                    col_t3.metric("Estado", "Cuadrada ✅", delta="OK", delta_color="normal")
+                    if st.button("Guardar y Mayorizar Partida"):
+                        st.success("¡Partida registrada y mayorizada con éxito!")
+                else:
+                    col_t3.metric("Estado", "Descuadrada ❌", delta=f"-${diferencia:,.2f}", delta_color="inverse")
+                    st.warning("La suma del Debe y el Haber deben coincidir para guardar la partida.")
+                    
+        with tab_c2:
+            st.markdown("### Libro Diario General")
+            if not st.session_state.libro_diario.empty:
+                st.dataframe(st.session_state.libro_diario, use_container_width=True)
+            else:
+                st.info("No hay transacciones registradas en el libro diario aún.")
+                
+        with tab_c3:
+            st.markdown("### Balance de Comprobación y Estados Financieros")
+            st.write("Generación automática de Balance General y Estado de Resultados.")
         
     elif menu == "Facturación DTE":
         render_facturacion()
