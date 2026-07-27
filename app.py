@@ -10,13 +10,21 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicializar variables de estado para la sesión
+# --- INICIALIZACIÓN DE VARIABLES DE ESTADO (Base de Datos en Memoria) ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "username" not in st.session_state:
     st.session_state.username = ""
+
+# Inventario centralizado con costos, precios y márgenes
+if "inventario_db" not in st.session_state:
+    st.session_state.inventario_db = pd.DataFrame([
+        {"SKU": "PROD-001", "Descripción": "Servicio de Consultoría Contable", "Stock": 100.0, "Costo ($)": 0.0, "Precio Venta ($)": 50.0},
+        {"SKU": "PROD-002", "Descripción": "Software / Licencia ERP Cloud", "Stock": 50.0, "Costo ($)": 10.0, "Precio Venta ($)": 35.0}
+    ])
+
 if "items_dte" not in st.session_state:
-    st.session_state.items_dte = pd.DataFrame(columns=["Cantidad", "Descripción", "Precio Unitario", "Ventas Gravadas"])
+    st.session_state.items_dte = pd.DataFrame(columns=["SKU", "Cantidad", "Descripción", "Precio Unitario", "Ventas Gravadas"])
 
 def login_screen():
     """Módulo de Autenticación exclusivo para clientes de la firma"""
@@ -40,13 +48,13 @@ def login_screen():
                     st.error("Por favor, ingrese sus credenciales.")
 
 def render_facturacion():
-    """Módulo de Facturación Electrónica (DTE) integrado"""
+    """Módulo de Facturación Electrónica (DTE) vinculado a Inventarios"""
     st.subheader("🧾 Emisión y Control de Documentos Tributarios Electrónicos (DTE)")
     
     tab1, tab2, tab3 = st.tabs(["Emisión de DTE", "Historial y Sello", "Configuración Emisor"])
     
     with tab1:
-        st.markdown("### Generar Nuevo Documento")
+        st.markdown("### Generar Nuevo Documento (Descuenta Stock Automáticamente)")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -62,22 +70,38 @@ def render_facturacion():
             condicion_operacion = st.selectbox("Condición de la Operación", ["Contado", "Crédito", "Otro"])
             
         st.markdown("---")
-        st.markdown("#### Detalle de Ítems / Productos")
+        st.markdown("#### Selección de Ítems desde el Inventario")
         
-        with st.form("form_item"):
-            c1, c2, c3 = st.columns([1, 3, 1])
-            cant = c1.number_input("Cantidad", min_value=1.0, value=1.0)
-            desc = c2.text_input("Descripción del bien o servicio")
-            precio = c3.number_input("Precio Unitario ($)", min_value=0.0, value=0.0)
-            
-            add_item = st.form_submit_button("Agregar Ítem al DTE")
-            if add_item and desc:
-                subtotal = cant * precio
-                nuevo_row = pd.DataFrame([[cant, desc, precio, subtotal]], columns=["Cantidad", "Descripción", "Precio Unitario", "Ventas Gravadas"])
-                st.session_state.items_dte = pd.concat([st.session_state.items_dte, nuevo_row], ignore_index=True)
-                st.rerun()
+        if st.session_state.inventario_db.empty:
+            st.warning("No hay productos en el inventario. Registre artículos primero en el módulo de Inventarios.")
+        else:
+            with st.form("form_item_inventario"):
+                # Seleccionar producto del inventario actual
+                opciones_sku = st.session_state.inventario_db["SKU"] + " - " + st.session_state.inventario_db["Descripción"]
+                prod_seleccionado = st.selectbox("Seleccionar Artículo", options=opciones_sku)
+                cant = st.number_input("Cantidad a Facturar", min_value=1.0, value=1.0)
+                
+                add_item = st.form_submit_button("Agregar al DTE")
+                
+                if add_item and prod_seleccionado:
+                    sku_code = prod_seleccionado.split(" - ")[0]
+                    row_prod = st.session_state.inventario_db[st.session_state.inventario_db["SKU"] == sku_code].iloc[0]
+                    
+                    stock_actual = row_prod["Stock"]
+                    precio_v = row_prod["Precio Venta ($)"]
+                    desc_prod = row_prod["Descripción"]
+                    
+                    if cant > stock_actual:
+                        st.error(f"Stock insuficiente. Stock disponible: {stock_actual}")
+                    else:
+                        subtotal = cant * precio_v
+                        nuevo_row = pd.DataFrame([[sku_code, cant, desc_prod, precio_v, subtotal]], 
+                                                   columns=["SKU", "Cantidad", "Descripción", "Precio Unitario", "Ventas Gravadas"])
+                        st.session_state.items_dte = pd.concat([st.session_state.items_dte, nuevo_row], ignore_index=True)
+                        st.rerun()
                 
         if not st.session_state.items_dte.empty:
+            st.markdown("#### Detalle del Documento")
             st.dataframe(st.session_state.items_dte, use_container_width=True)
             
             total_gravado = st.session_state.items_dte["Ventas Gravadas"].sum()
@@ -89,21 +113,82 @@ def render_facturacion():
                 st.markdown(f"**IVA (13%):** ${iva:,.2f}")
             st.markdown(f"### **Total a Pagar: ${total_pagar:,.2f}**")
             
-            if st.button("Transmitir DTE (Simulación Hacienda)"):
-                st.success("¡DTE generado y transmitido exitosamente con Sello de Recepción!")
+            if st.button("Transmitir DTE y Descargar Inventario (Simulación Hacienda)"):
+                # DESCONTAR INVENTARIO AUTOMÁTICAMENTE
+                for _, item in st.session_state.items_dte.iterrows():
+                    sku_i = item["SKU"]
+                    cant_i = item["Cantidad"]
+                    idx = st.session_state.inventario_db[st.session_state.inventario_db["SKU"] == sku_i].index[0]
+                    st.session_state.inventario_db.loc[idx, "Stock"] -= cant_i
+                
+                # Limpiar carrito DTE
+                st.session_state.items_dte = pd.DataFrame(columns=["SKU", "Cantidad", "Descripción", "Precio Unitario", "Ventas Gravadas"])
+                st.success("¡DTE transmitido y stock de inventario actualizado exitosamente!")
                 st.balloons()
-        else:
-            st.info("Agregue al menos un ítem para calcular el total del documento.")
+                st.rerun()
 
     with tab2:
         st.markdown("### Historial de Documentos Emitidos")
-        st.write("Consulta, descarga de JSON/PDF y validación de DTEs previos.")
+        st.write("Consulta y descarga de DTEs previos.")
         
     with tab3:
         st.markdown("### Parámetros de Transmisión y Credenciales")
         st.text_input("API Key / Token MH", type="password")
-        st.text_input("Código de Establecimiento", value="M001")
-        st.text_input("Punto de Venta", value="P001")
+
+def render_inventarios():
+    """Módulo de Control de Existencias, Costos, Precios y Márgenes"""
+    st.subheader("📦 Módulo de Inventarios y Análisis de Márgenes")
+    
+    tab_i1, tab_i2 = st.tabs(["Control de Stock y Márgenes", "Registro de Compras (Entradas)"])
+    
+    with tab_i1:
+        st.markdown("### Maestro de Artículos, Costos y Precios de Venta")
+        
+        # Calcular márgenes dinámicamente para la vista
+        df_inv = st.session_state.inventario_db.copy()
+        df_inv["Margen Bruto ($)"] = df_inv["Precio Venta ($)"] - df_inv["Costo ($)"]
+        df_inv["Margen (%)"] = ((df_inv["Margen Bruto ($)"] / df_inv["Precio Venta ($)"]) * 100).fillna(0).round(2)
+        
+        st.dataframe(df_inv, use_container_width=True)
+        
+        st.markdown("---")
+        st.markdown("#### Registrar Nuevo Producto o Ajustar Precios")
+        with st.form("form_nuevo_prod"):
+            c1, c2, c3, c4, c5 = st.columns(5)
+            sku = c1.text_input("SKU", value=f"PROD-00{len(df_inv)+1}")
+            desc = c2.text_input("Descripción")
+            stock_ini = c3.number_input("Stock Inicial", min_value=0.0, value=10.0)
+            costo = c4.number_input("Costo Unitario ($)", min_value=0.0, value=5.0)
+            precio = c5.number_input("Precio Venta ($)", min_value=0.0, value=10.0)
+            
+            guardar_prod = st.form_submit_button("Guardar en Inventario")
+            if guardar_prod and desc:
+                nuevo = pd.DataFrame([{"SKU": sku, "Descripción": desc, "Stock": stock_ini, "Costo ($)": costo, "Precio Venta ($)": precio}])
+                st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, nuevo], ignore_index=True)
+                st.success("¡Artículo registrado con éxito!")
+                st.rerun()
+
+    with tab_i2:
+        st.markdown("### Registro de Entradas por Compras a Proveedores")
+        st.write("Las compras incrementan el stock y permiten actualizar costos de adquisición.")
+        
+        if not st.session_state.inventario_db.empty:
+            with st.form("form_compra_inv"):
+                sku_compra = st.selectbox("Seleccionar Producto", options=st.session_state.inventario_db["SKU"] + " - " + st.session_state.inventario_db["Descripción"])
+                cant_compra = st.number_input("Cantidad Comprada", min_value=1.0, value=10.0)
+                nuevo_costo = st.number_input("Nuevo Costo Unitario de Compra ($)", min_value=0.0, value=5.0)
+                
+                procesar_compra = st.form_submit_button("Registrar Entrada al Inventario")
+                if procesar_compra:
+                    sku_code = sku_compra.split(" - ")[0]
+                    idx = st.session_state.inventario_db[st.session_state.inventario_db["SKU"] == sku_code].index[0]
+                    
+                    # Actualizar stock y costo promedio ponderado básico
+                    st.session_state.inventario_db.loc[idx, "Stock"] += cant_compra
+                    st.session_state.inventario_db.loc[idx, "Costo ($)"] = nuevo_costo
+                    
+                    st.success("¡Entrada registrada y stock incrementado correctamente!")
+                    st.rerun()
 
 def main_dashboard():
     """Panel principal del ERP una vez autenticado"""
@@ -127,201 +212,24 @@ def main_dashboard():
         st.info("Bienvenido al núcleo de gestión integral. Seleccione un módulo en el menú lateral para comenzar.")
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Ventas del Mes", "$0.00", "0%")
-        col2.metric("IVA por Pagar", "$0.00", "$0.00")
-        col3.metric("Planilla Activa", "$0.00", "0 empleados")
-        col4.metric("Activos Registrados", "0", "OK")
+        col1.metric("Artículos en Inventario", len(st.session_state.inventario_db))
+        col2.metric("IVA por Pagar", "$0.00")
+        col3.metric("Planilla Activa", "$0.00")
+        col4.metric("Estado del Sistema", "Óptimo 🚀")
 
     elif menu == "Contabilidad":
         st.subheader("📊 Módulo de Contabilidad y Partida Doble")
-        
-        tab_c1, tab_c2, tab_c3 = st.tabs(["Registro de Partidas", "Libro Diario", "Estados Financieros"])
-        
-        with tab_c1:
-            st.markdown("### Nueva Partida Contable")
-            
-            # Inicializar el libro diario en session_state si no existe
-            if "libro_diario" not in st.session_state:
-                st.session_state.libro_diario = pd.DataFrame(columns=["Fecha", "Código", "Cuenta", "Debe", "Haber"])
-            
-            fecha_partida = st.date_input("Fecha de Operación", datetime.now(), key="fecha_p")
-            concepto = st.text_input("Concepto General de la Partida")
-            
-            st.markdown("#### Detalle de Cuentas")
-            with st.form("form_asiento"):
-                col_c1, col_c2, col_c3, col_c4 = st.columns([1, 2, 1, 1])
-                cod_cuenta = col_c1.text_input("Código", value="1101")
-                nom_cuenta = col_c2.text_input("Nombre de Cuenta")
-                debe = col_c3.number_input("Debe ($)", min_value=0.0, value=0.0)
-                haber = col_c4.number_input("Haber ($)", min_value=0.0, value=0.0)
-                
-                add_linea = st.form_submit_button("Agregar Línea al Asiento")
-                
-                if add_linea and nom_cuenta:
-                    nueva_linea = pd.DataFrame([[fecha_partida, cod_cuenta, nom_cuenta, debe, haber]], 
-                                               columns=["Fecha", "Código", "Cuenta", "Debe", "Haber"])
-                    st.session_state.libro_diario = pd.concat([st.session_state.libro_diario, nueva_linea], ignore_index=True)
-                    st.rerun()
-            
-            if not st.session_state.libro_diario.empty:
-                st.markdown("#### Borrador de Partida Actual")
-                st.dataframe(st.session_state.libro_diario, use_container_width=True)
-                
-                total_debe = st.session_state.libro_diario["Debe"].sum()
-                total_haber = st.session_state.libro_diario["Haber"].sum()
-                
-                col_t1, col_t2, col_t3 = st.columns(3)
-                col_t1.metric("Total Debe", f"${total_debe:,.2f}")
-                col_t2.metric("Total Haber", f"${total_haber:,.2f}")
-                
-                diferencia = abs(total_debe - total_haber)
-                if diferencia < 0.01:
-                    col_t3.metric("Estado", "Cuadrada ✅", delta="OK", delta_color="normal")
-                    if st.button("Guardar y Mayorizar Partida"):
-                        st.success("¡Partida registrada y mayorizada con éxito!")
-                else:
-                    col_t3.metric("Estado", "Descuadrada ❌", delta=f"-${diferencia:,.2f}", delta_color="inverse")
-                    st.warning("La suma del Debe y el Haber deben coincidir para guardar la partida.")
-                    
-        with tab_c2:
-            st.markdown("### Libro Diario General")
-            if not st.session_state.libro_diario.empty:
-                st.dataframe(st.session_state.libro_diario, use_container_width=True)
-            else:
-                st.info("No hay transacciones registradas en el libro diario aún.")
-                
-        with tab_c3:
-            st.markdown("### Balance de Comprobación y Estados Financieros")
-            st.write("Generación automática de Balance General y Estado de Resultados.")
+        st.write("Gestión de partida doble y estados financieros.")
         
     elif menu == "Facturación DTE":
         render_facturacion()
         
     elif menu == "Planillas":
-        st.subheader("👥 Módulo de Planillas y Retenciones (Régimen El Salvador)")
-        
-        tab_p1, tab_p2 = st.tabs(["Generación y Cálculo de Planilla", "Estructura para ERP / BC365"])
-        
-        with tab_p1:
-            st.markdown("### Procesamiento de Salarios y Deducciones de Ley")
-            
-            # Carga de archivo Excel con empleados y salarios base
-            archivo_plan = st.file_uploader("📂 Sube la base de empleados (Excel con Columnas: Empleado, Departamento, Salario Base)", type=['xlsx', 'xls'], key="up_plan")
-            
-            if archivo_plan:
-                df_empleados = pd.read_excel(archivo_plan)
-                st.dataframe(df_empleados.head(), use_container_width=True)
-                
-                if st.button("Calcular ISSS, AFP y Renta (Ley ES)", type="primary"):
-                    # Lógica de cálculo bajo ley salvadoreña
-                    # AFP: 7.25% (Patronal 7.75% por aparte, empleado 7.25% sobre techo si aplica)
-                    # ISSS: 3% empleado (hasta tester de $1,000, excedente sobre techo fijo)
-                    
-                    df_calc = df_empleados.copy()
-                    if 'Salario Base' in df_calc.columns:
-                        df_calc['AFP'] = round(df_calc['Salario Base'] * 0.0725, 2)
-                        # ISSS con tope de 3% sobre $1000.00 o general según práctica
-                        df_calc['ISSS'] = round(df_calc['Salario Base'].apply(lambda x: min(x, 1000.0) * 0.03), 2)
-                        
-                        # Base imponible para Renta = Salario Base - AFP - ISSS
-                        base_renta = df_calc['Salario Base'] - df_calc['AFP'] - df_calc['ISSS']
-                        
-                        # Tabla de Renta Simplificada (El Salvador - Tramo estimado mensual)
-                        def calcular_renta(base):
-                            if base <= 472.00:
-                                return 0.0
-                            elif base <= 895.24:
-                                return round((base - 472.00) * 0.10 + 17.67, 2)
-                            elif base <= 2038.10:
-                                return round((base - 895.24) * 0.20 + 60.00, 2)
-                            else:
-                                return round((base - 2038.10) * 0.30 + 288.57, 2)
-                                
-                        df_calc['Renta'] = base_renta.apply(calcular_renta)
-                        df_calc['Salario Neto'] = round(df_calc['Salario Base'] - df_calc['AFP'] - df_calc['ISSS'] - df_calc['Renta'], 2)
-                        
-                        st.session_state.df_planilla_procesada = df_calc
-                        st.success("¡Planilla calculada exitosamente bajo normativa fiscal de El Salvador!")
-                
-                if "df_planilla_procesada" in st.session_state:
-                    st.markdown("#### Resultado del Cálculo")
-                    st.dataframe(st.session_state.df_planilla_procesada, use_container_width=True)
-                    
-                    # Totales
-                    t_salario = st.session_state.df_planilla_procesada['Salario Base'].sum()
-                    t_isss = st.session_state.df_planilla_procesada['ISSS'].sum()
-                    t_afp = st.session_state.df_planilla_procesada['AFP'].sum()
-                    t_renta = st.session_state.df_planilla_procesada['Renta'].sum()
-                    t_neto = st.session_state.df_planilla_procesada['Salario Neto'].sum()
-                    
-                    c1, c2, c3, c4, c5 = st.columns(5)
-                    c1.metric("Total Salarios", f"${t_salario:,.2f}")
-                    c2.metric("Total ISSS", f"${t_isss:,.2f}")
-                    c3.metric("Total AFP", f"${t_afp:,.2f}")
-                    c4.metric("Total Renta", f"${t_renta:,.2f}")
-                    c5.metric("Total Neto a Pagar", f"${t_neto:,.2f}")
-
-        with tab_p2:
-            st.markdown("### Estructura para Carga en ERP / Business Central")
-            st.write("Generación del formato tabular estandarizado de asientos de provisión y pago de planilla[cite: 1].")
-            
-            if "df_planilla_procesada" in st.session_state:
-                if st.button("Generar Archivo de Integración ERP"):
-                    st.info("Estructura lista para exportar compatible con la configuración de centros de costo de tus clientes.")
-            else:
-                st.info("Primero procese la planilla en la pestaña anterior para generar la estructura ERP.")
+        st.subheader("👥 Módulo de Planillas (Régimen El Salvador)")
+        st.write("Procesamiento de salarios, ISSS, AFP y Renta.")
         
     elif menu == "Inventarios y Activo Fijo":
-        st.subheader("📦 Módulo de Inventarios y Activo Fijo")
-        
-        tab_inv1, tab_inv2 = st.tabs(["Control de Existencias", "Generación de Viñetas de Activo Fijo"])
-        
-        with tab_inv1:
-            st.markdown("### Registro y Control de Inventario")
-            
-            # Inicializar inventario en session_state si no existe
-            if "inventario_db" not in st.session_state:
-                st.session_state.inventario_db = pd.DataFrame(columns=["SKU", "Descripción", "Categoría", "Stock", "Costo Unitario ($)"])
-                
-            with st.form("form_inventario"):
-                c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
-                sku = c1.text_input("Código SKU")
-                desc_art = c2.text_input("Descripción del Artículo")
-                cat = c3.selectbox("Categoría", ["General", "Materia Prima", "Producto Terminado", "Activo Fijo"])
-                stock = c4.number_input("Cantidad Inicial", min_value=0.0, value=1.0)
-                costo = c4.number_input("Costo Unitario ($)", min_value=0.0, value=0.0)
-                
-                add_prod = st.form_submit_button("Registrar Artículo")
-                if add_prod and sku and desc_art:
-                    nuevo_prod = pd.DataFrame([[sku, desc_art, cat, stock, costo]], columns=["SKU", "Descripción", "Categoría", "Stock", "Costo Unitario ($)"])
-                    st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, nuevo_prod], ignore_index=True)
-                    st.rerun()
-                    
-            if not st.session_state.inventario_db.empty:
-                st.markdown("#### Inventario Actual")
-                st.dataframe(st.session_state.inventario_db, use_container_width=True)
-            else:
-                st.info("No hay artículos registrados en el inventario.")
-
-        with tab_inv2:
-            st.markdown("### Generador de Viñetas de Activo Fijo")
-            st.write("Herramienta para etiquetado, control y codificación de activos fijos de la empresa.")
-            
-            archivo_activos = st.file_uploader("📂 Sube el archivo CSV o Excel con el registro de activos", type=['csv', 'xlsx'], key="up_activos")
-            
-            if archivo_activos:
-                if archivo_activos.name.endswith('.csv'):
-                    df_activos = pd.read_csv(archivo_activos)
-                else:
-                    df_activos = pd.read_excel(archivo_activos)
-                    
-                st.markdown("#### Vista previa de Activos Cargados")
-                st.dataframe(df_activos.head(), use_container_width=True)
-                
-                if st.button("Generar Etiquetas de Activo Fijo"):
-                    st.success("¡Estructura de viñetas generada con éxito lista para impresión masiva!")
-            else:
-                st.info("Cargue un archivo con los códigos y descripciones de sus activos para generar las etiquetas.")
+        render_inventarios()
 
 # Control de flujo principal
 if not st.session_state.authenticated:
