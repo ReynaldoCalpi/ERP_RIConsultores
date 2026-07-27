@@ -20,39 +20,31 @@ if "username" not in st.session_state:
 if "empresas_config" not in st.session_state:
     st.session_state.empresas_config = {
         "06140806831121": {
-            "razon_social": "RI Consultores S.A. de C.V.",
-            "nombre_comercial": "RI Consultores",
+            "razon_social": "Carteras Lily S.A. de C.V.",
+            "nombre_comercial": "Carteras Lily",
             "nit": "0614-080683-112-1",
             "nrc": "123456-7",
-            "giro": "Servicios de Contabilidad y Auditoría",
+            "giro": "Venta de Artículos de Marroquinería y Accesorios",
             "direccion": "San Salvador, El Salvador",
             "telefono": "+503 2222-2222",
-            "correo": "contacto@riconsultores.com",
-            "web": "www.riconsultores.com",
+            "correo": "ventas@carteraslily.com",
+            "web": "www.carteraslily.com",
             "token_mh": ""
         }
     }
 
+# Inventario inicial adaptado al giro de marroquinería y accesorios
 if "inventario_db" not in st.session_state:
     st.session_state.inventario_db = pd.DataFrame([
-        {
-            "SKU": "PROD-001", 
-            "Descripción": "Servicio de Consultoría Contable", 
-            "Stock": 100.0, 
-            "Costo ($)": 0.0, 
-            "Precio Unidad ($)": 50.0, 
-            "Precio Mayoreo ($)": 45.0, 
-            "Precio Especial ($)": 40.0
-        },
-        {
-            "SKU": "PROD-002", 
-            "Descripción": "Software / Licencia ERP Cloud", 
-            "Stock": 50.0, 
-            "Costo ($)": 10.0, 
-            "Precio Unidad ($)": 35.0, 
-            "Precio Mayoreo ($)": 30.0, 
-            "Precio Especial ($)": 25.0
-        }
+        {"SKU": "LILY-001", "Descripción": "Cartera Artesanal de Cuero", "Stock": 25.0, "Costo ($)": 15.0, "Precio Unidad ($)": 35.0, "Precio Mayoreo ($)": 28.0, "Precio Especial ($)": 25.0},
+        {"SKU": "LILY-002", "Descripción": "Morral Casual", "Stock": 30.0, "Costo ($)": 12.0, "Precio Unidad ($)": 28.0, "Precio Mayoreo ($)": 22.0, "Precio Especial ($)": 20.0},
+        {"SKU": "LILY-003", "Descripción": "Bandolera Exec", "Stock": 20.0, "Costo ($)": 18.0, "Precio Unidad ($)": 40.0, "Precio Mayoreo ($)": 32.0, "Precio Especial ($)": 28.0},
+        {"SKU": "LILY-004", "Descripción": "Cartera Pistera", "Stock": 40.0, "Costo ($)": 8.0, "Precio Unidad ($)": 18.0, "Precio Mayoreo ($)": 14.0, "Precio Especial ($)": 12.0},
+        {"SKU": "LILY-005", "Descripción": "Cartera Estilo OH", "Stock": 15.0, "Costo ($)": 25.0, "Precio Unidad ($)": 55.0, "Precio Mayoreo ($)": 45.0, "Precio Especial ($)": 40.0},
+        {"SKU": "LILY-006", "Descripción": "Cartera Estilo CK", "Stock": 15.0, "Costo ($)": 28.0, "Precio Unidad ($)": 60.0, "Precio Mayoreo ($)": 50.0, "Precio Especial ($)": 45.0},
+        {"SKU": "LILY-007", "Descripción": "Sombrero de Sol / Moda", "Stock": 18.0, "Costo ($)": 10.0, "Precio Unidad ($)": 22.0, "Precio Mayoreo ($)": 17.0, "Precio Especial ($)": 15.0},
+        {"SKU": "LILY-008", "Descripción": "Gorras Casuales", "Stock": 35.0, "Costo ($)": 5.0, "Precio Unidad ($)": 12.0, "Precio Mayoreo ($)": 9.0, "Precio Especial ($)": 8.0},
+        {"SKU": "LILY-009", "Descripción": "Mochila Escolar / Urbana", "Stock": 22.0, "Costo ($)": 20.0, "Precio Unidad ($)": 45.0, "Precio Mayoreo ($)": 38.0, "Precio Especial ($)": 33.0},
     ])
 
 if "items_dte" not in st.session_state:
@@ -60,6 +52,9 @@ if "items_dte" not in st.session_state:
 
 if "libro_diario" not in st.session_state:
     st.session_state.libro_diario = pd.DataFrame(columns=["Fecha", "Código", "Cuenta", "Debe", "Haber"])
+
+if "caja_sesion" not in st.session_state:
+    st.session_state.caja_sesion = {"abierta": False, "fondo_inicial": 0.0, "turno": "Turno 1", "responsable": ""}
 
 
 def login_screen():
@@ -78,7 +73,6 @@ def login_screen():
                 if user and password: 
                     st.session_state.authenticated = True
                     st.session_state.username = user
-                    # Si el usuario es nuevo, inicializamos su perfil por defecto
                     if user not in st.session_state.empresas_config:
                         st.session_state.empresas_config[user] = {
                             "razon_social": f"Empresa de {user}",
@@ -99,8 +93,6 @@ def login_screen():
 
 def render_facturacion():
     st.subheader("🧾 Emisión y Control de Documentos Tributarios Electrónicos (DTE)")
-    
-    # Obtenemos la configuración de la empresa del usuario actual
     config_actual = st.session_state.empresas_config.get(st.session_state.username, {})
     
     tab1, tab2, tab3 = st.tabs(["Emisión de DTE", "Historial y Sello", "⚙️ Configuración de Empresa (Emisor)"])
@@ -182,7 +174,6 @@ def render_facturacion():
                     st.rerun()
                     
             with col_acciones_dte2:
-                # Ticket Preliminar con los datos dinámicos configurados por el cliente
                 if st.button("🖨️ Imprimir Ticket Preliminar"):
                     ticket_html = f"""
                     <div style="width: 300px; font-family: monospace; font-size: 11px; padding: 10px; border: 1px dashed #333;">
@@ -213,8 +204,6 @@ def render_facturacion():
 
     with tab3:
         st.markdown("### ⚙️ Configuración del Perfil de Empresa y Datos del Emisor")
-        st.info("Estos datos aparecerán automáticamente en los encabezados de tus facturas, tickets y documentos tributarios.")
-        
         with st.form("form_config_empresa"):
             c_e1, c_e2 = st.columns(2)
             rs = c_e1.text_input("Razón Social", value=config_actual.get("razon_social", ""))
@@ -237,19 +226,160 @@ def render_facturacion():
             guardar_conf = st.form_submit_button("Guardar Configuración de Empresa", type="primary")
             if guardar_conf:
                 st.session_state.empresas_config[st.session_state.username] = {
-                    "razon_social": rs,
-                    "nombre_comercial": nc,
-                    "nit": nit_emp,
-                    "nrc": nrc_emp,
-                    "giro": giro_emp,
-                    "direccion": dir_emp,
-                    "telefono": tel_emp,
-                    "correo": mail_emp,
-                    "web": web_emp,
-                    "token_mh": token_mh
+                    "razon_social": rs, "nombre_comercial": nc, "nit": nit_emp, "nrc": nrc_emp,
+                    "giro": giro_emp, "direccion": dir_emp, "telefono": tel_emp, "correo": mail_emp,
+                    "web": web_emp, "token_mh": token_mh
                 }
                 st.success("¡Datos de la empresa actualizados correctamente!")
                 st.rerun()
+
+
+def render_caja():
+    st.subheader("💵 Control de Caja, Aperturas, Cierres y Cambios de Turno")
+    
+    tab_ca1, tab_ca2 = st.tabs(["Control de Caja Actual", "Historial / Arqueos"])
+    
+    with tab_ca1:
+        estado_caja = st.session_state.caja_sesion
+        
+        if not estado_caja["abierta"]:
+            st.warning("⚠️ La caja se encuentra CERRADA en este momento.")
+            with st.form("form_abrir_caja"):
+                st.markdown("### Apertura de Caja / Turno")
+                fondo = st.number_input("Fondo Inicial en Efectivo ($)", min_value=0.0, value=50.0)
+                turno = st.selectbox("Seleccionar Turno", ["Turno 1 (Mañana)", "Turno 2 (Tarde)", "Turno 3 (Noche / Especial)"])
+                responsable = st.text_input("Cajero / Responsable del Turno", value=st.session_state.username)
+                
+                abrir_btn = st.form_submit_button("Abrir Caja", type="primary")
+                if abrir_btn:
+                    st.session_state.caja_sesion = {
+                        "abierta": True,
+                        "fondo_inicial": fondo,
+                        "turno": turno,
+                        "responsable": responsable
+                    }
+                    st.success(f"¡Caja abierta exitosamente para el {turno}!")
+                    st.rerun()
+        else:
+            st.success(f"🟢 Caja Abierta | Turno: {estado_caja['turno']} | Responsable: {estado_caja['responsable']}")
+            st.metric("Fondo Inicial Registrado", f"${estado_caja['fondo_inicial']:,.2f}")
+            
+            st.markdown("---")
+            with st.form("form_cerrar_caja"):
+                st.markdown("### Cierre de Turno / Arqueo Preliminar")
+                efectivo_contado = st.number_input("Efectivo Físico Contado en Caja ($)", min_value=0.0, value=50.0)
+                observaciones = st.text_area("Observaciones del Turno / Cambios")
+                
+                cerrar_btn = st.form_submit_button("Realizar Cierre de Caja y Cambio de Turno")
+                if cerrar_btn:
+                    st.info(f"Cierre registrado. Fondo inicial era: ${estado_caja['fondo_inicial']:,.2f}. Efectivo contado: ${efectivo_contado:,.2f}")
+                    st.session_state.caja_sesion["abierta"] = False
+                    st.success("¡Caja cerrada correctamente. Lista para el siguiente turno!")
+                    st.rerun()
+
+    with tab_ca2:
+        st.markdown("### Historial de Cortes y Arqueos Anteriores")
+        st.info("Aquí se almacenarán los registros históricos de los cierres diarios y reportes de auditoría por turno.")
+
+
+def render_inventarios():
+    st.subheader("📦 Módulo de Inventarios (Marroquinería y Accesorios)")
+    
+    columnas_requeridas = ["SKU", "Descripción", "Stock", "Costo ($)", "Precio Unidad ($)", "Precio Mayoreo ($)", "Precio Especial ($)"]
+    for col in columnas_requeridas:
+        if col not in st.session_state.inventario_db.columns:
+            st.session_state.inventario_db[col] = 0.0 if "($)" in col or col == "Stock" else ""
+
+    tab_i0, tab_i1, tab_i2 = st.tabs(["📥 Carga Masiva Inicial", "Control de Stock y Precios", "Registro de Compras (Entradas)"])
+    
+    with tab_i0:
+        st.markdown("### Importación Masiva de Inventario (Excel / CSV)")
+        archivo_carga = st.file_uploader("Selecciona archivo de inventario inicial", type=["csv", "xlsx"])
+        if archivo_carga:
+            try:
+                df_upload = pd.read_csv(archivo_carga) if archivo_carga.name.endswith('.csv') else pd.read_excel(archivo_carga)
+                st.dataframe(df_upload.head(), use_container_width=True)
+                if st.button("Confirmar e Importar al Inventario General", type="primary"):
+                    for col in columnas_requeridas:
+                        if col not in df_upload.columns and col != "SKU":
+                            df_upload[col] = 0.0
+                    st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, df_upload[columnas_requeridas]], ignore_index=True)
+                    st.success("¡Inventario cargado masivamente con éxito!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error al procesar el archivo: {e}")
+
+    with tab_i1:
+        st.markdown("### Maestro de Artículos y Precios Múltiples")
+        df_inv = st.session_state.inventario_db.copy()
+        df_inv["Margen Unidad ($)"] = df_inv["Precio Unidad ($)"] - df_inv["Costo ($)"]
+        df_inv["Margen (%)"] = ((df_inv["Margen Unidad ($)"] / df_inv["Precio Unidad ($)"]) * 100).fillna(0).round(2)
+        st.dataframe(df_inv, use_container_width=True)
+        
+        st.markdown("---")
+        st.markdown("#### Registro Individual o Producto No Clasificado (Libre)")
+        with st.form("form_nuevo_prod_avanzado"):
+            c1, c2, c3 = st.columns(3)
+            sku = c1.text_input("SKU / Código de Barras", value=f"LILY-0{len(df_inv)+1}")
+            
+            # Selector de tipo con opciones predefinidas y espacios libres
+            tipo_prod_opcion = c2.selectbox(
+                "Categoría / Estilo", 
+                [
+                    "Cartera Artesanal de Cuero", "Morral Casual", "Bandolera Exec", 
+                    "Cartera Pistera", "Cartera Estilo OH", "Cartera Estilo CK", 
+                    "Sombrero de Sol / Moda", "Gorras Casuales", "Mochila Escolar / Urbana",
+                    "Producto No Clasificado 1 (Libre)", "Producto No Clasificado 2 (Libre)", "Producto No Clasificado 3 (Libre)"
+                ]
+            )
+            
+            # Si selecciona uno libre, habilitamos un espacio para poner el nombre exacto
+            desc_libre = ""
+            if "Libre" in tipo_prod_opcion:
+                desc_libre = c3.text_input("Especifique Nombre del Producto Libre", value="Artículo Especial")
+                desc_final = desc_libre
+            else:
+                desc_final = tipo_prod_opcion
+                c3.markdown("") # espacio visual
+
+            c4, c5, c6, c7, c8 = st.columns(5)
+            stock_ini = c4.number_input("Stock Inicial", min_value=0.0, value=10.0)
+            costo = c5.number_input("Costo Unitario ($)", min_value=0.0, value=5.0)
+            precio_u = c6.number_input("Precio Unidad ($)", min_value=0.0, value=10.0)
+            precio_m = c7.number_input("Precio Mayoreo ($)", min_value=0.0, value=8.50)
+            precio_e = c8.number_input("Precio Especial ($)", min_value=0.0, value=7.50)
+            
+            guardar_prod = st.form_submit_button("Guardar Producto en Inventario")
+            if guardar_prod and desc_final:
+                nuevo = pd.DataFrame([{
+                    "SKU": sku, 
+                    "Descripción": desc_final, 
+                    "Stock": stock_ini, 
+                    "Costo ($)": costo, 
+                    "Precio Unidad ($)": precio_u, 
+                    "Precio Mayoreo ($)": precio_m, 
+                    "Precio Especial ($)": precio_e
+                }])
+                st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, nuevo], ignore_index=True)
+                st.success("¡Artículo registrado con éxito!")
+                st.rerun()
+
+    with tab_i2:
+        st.markdown("### Registro de Entradas por Compras a Proveedores")
+        if not st.session_state.inventario_db.empty:
+            with st.form("form_compra_inv_seguro"):
+                sku_compra = st.selectbox("Seleccionar Producto", options=st.session_state.inventario_db["SKU"] + " - " + st.session_state.inventario_db["Descripción"])
+                cant_compra = st.number_input("Cantidad Comprada", min_value=1.0, value=10.0)
+                nuevo_costo = st.number_input("Nuevo Costo Unitario de Compra ($)", min_value=0.0, value=5.0)
+                
+                procesar_compra = st.form_submit_button("Registrar Entrada al Inventario")
+                if procesar_compra:
+                    sku_code = sku_compra.split(" - ")[0]
+                    idx = st.session_state.inventario_db[st.session_state.inventario_db["SKU"] == sku_code].index[0]
+                    st.session_state.inventario_db.loc[idx, "Stock"] += cant_compra
+                    st.session_state.inventario_db.loc[idx, "Costo ($)"] = nuevo_costo
+                    st.success("¡Entrada registrada con éxito!")
+                    st.rerun()
 
 
 def render_contabilidad():
@@ -301,130 +431,6 @@ def render_contabilidad():
         st.markdown("### Estados Financieros")
 
 
-def render_planillas():
-    st.subheader("👥 Módulo de Planillas y Retenciones (Régimen El Salvador)")
-    tab_p1, tab_p2 = st.tabs(["Generación y Cálculo de Planilla", "Estructura para ERP"])
-    
-    with tab_p1:
-        archivo_plan = st.file_uploader("📂 Sube la base de empleados", type=['xlsx', 'xls'], key="up_plan")
-        if archivo_plan:
-            df_empleados = pd.read_excel(archivo_plan)
-            st.dataframe(df_empleados.head(), use_container_width=True)
-            
-            if st.button("Calcular ISSS, AFP y Renta (Ley ES)", type="primary"):
-                df_calc = df_empleados.copy()
-                if 'Salario Base' in df_calc.columns:
-                    df_calc['AFP'] = round(df_calc['Salario Base'] * 0.0725, 2)
-                    df_calc['ISSS'] = round(df_calc['Salario Base'].apply(lambda x: min(x, 1000.0) * 0.03), 2)
-                    base_renta = df_calc['Salario Base'] - df_calc['AFP'] - df_calc['ISSS']
-                    
-                    def calcular_renta(base):
-                        if base <= 472.00: return 0.0
-                        elif base <= 895.24: return round((base - 472.00) * 0.10 + 17.67, 2)
-                        elif base <= 2038.10: return round((base - 895.24) * 0.20 + 60.00, 2)
-                        else: return round((base - 2038.10) * 0.30 + 288.57, 2)
-                            
-                    df_calc['Renta'] = base_renta.apply(calcular_renta)
-                    df_calc['Salario Neto'] = round(df_calc['Salario Base'] - df_calc['AFP'] - df_calc['ISSS'] - df_calc['Renta'], 2)
-                    st.session_state.df_planilla_procesada = df_calc
-                    st.success("¡Planilla calculada exitosamente!")
-            
-            if "df_planilla_procesada" in st.session_state:
-                st.dataframe(st.session_state.df_planilla_procesada, use_container_width=True)
-
-    with tab_p2:
-        st.markdown("### Estructura para Carga en ERP")
-
-
-def render_inventarios():
-    st.subheader("📦 Módulo de Inventarios Avanzado (Precios Múltiples y Carga Masiva)")
-    
-    columnas_requeridas = ["SKU", "Descripción", "Stock", "Costo ($)", "Precio Unidad ($)", "Precio Mayoreo ($)", "Precio Especial ($)"]
-    for col in columnas_requeridas:
-        if col not in st.session_state.inventario_db.columns:
-            st.session_state.inventario_db[col] = 0.0 if "($)" in col or col == "Stock" else ""
-
-    tab_i0, tab_i1, tab_i2 = st.tabs(["📥 Carga Masiva Inicial", "Control de Stock y Precios", "Registro de Compras (Entradas)"])
-    
-    with tab_i0:
-        st.markdown("### Importación Masiva de Inventario (Excel / CSV)")
-        st.info("Sube un archivo con las columnas: SKU, Descripción, Stock, Costo ($), Precio Unidad ($), Precio Mayoreo ($), Precio Especial ($).")
-        
-        archivo_carga = st.file_uploader("Selecciona archivo de inventario inicial", type=["csv", "xlsx"])
-        if archivo_carga:
-            try:
-                if archivo_carga.name.endswith('.csv'):
-                    df_upload = pd.read_csv(archivo_carga)
-                else:
-                    df_upload = pd.read_excel(archivo_carga)
-                
-                st.markdown("Vista previa de los datos a importar:")
-                st.dataframe(df_upload.head(), use_container_width=True)
-                
-                if st.button("Confirmar e Importar al Inventario General", type="primary"):
-                    for col in columnas_requeridas:
-                        if col not in df_upload.columns and col != "SKU":
-                            df_upload[col] = 0.0
-                    st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, df_upload[columnas_requeridas]], ignore_index=True)
-                    st.success("¡Inventario cargado masivamente con éxito!")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Error al procesar el archivo: {e}")
-
-    with tab_i1:
-        st.markdown("### Maestro de Artículos, Costos y Precios Múltiples")
-        df_inv = st.session_state.inventario_db.copy()
-        df_inv["Margen Unidad ($)"] = df_inv["Precio Unidad ($)"] - df_inv["Costo ($)"]
-        df_inv["Margen (%)"] = ((df_inv["Margen Unidad ($)"] / df_inv["Precio Unidad ($)"]) * 100).fillna(0).round(2)
-        st.dataframe(df_inv, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("#### Registro Individual o Edición de Producto")
-        with st.form("form_nuevo_prod_avanzado"):
-            c1, c2, c3 = st.columns(3)
-            sku = c1.text_input("SKU / Código de Barras", value=f"PROD-00{len(df_inv)+1}")
-            desc = c2.text_input("Descripción del Producto")
-            stock_ini = c3.number_input("Stock Inicial", min_value=0.0, value=10.0)
-            
-            c4, c5, c6, c7 = st.columns(4)
-            costo = c4.number_input("Costo Unitario ($)", min_value=0.0, value=5.0)
-            precio_u = c5.number_input("Precio Unidad ($)", min_value=0.0, value=10.0)
-            precio_m = c6.number_input("Precio Mayoreo ($)", min_value=0.0, value=8.50)
-            precio_e = c7.number_input("Precio Especial ($)", min_value=0.0, value=7.50)
-            
-            guardar_prod = st.form_submit_button("Guardar Producto en Inventario")
-            if guardar_prod and desc:
-                nuevo = pd.DataFrame([{
-                    "SKU": sku, 
-                    "Descripción": desc, 
-                    "Stock": stock_ini, 
-                    "Costo ($)": costo, 
-                    "Precio Unidad ($)": precio_u, 
-                    "Precio Mayoreo ($)": precio_m, 
-                    "Precio Especial ($)": precio_e
-                }])
-                st.session_state.inventario_db = pd.concat([st.session_state.inventario_db, nuevo], ignore_index=True)
-                st.success("¡Artículo registrado con éxito!")
-                st.rerun()
-
-    with tab_i2:
-        st.markdown("### Registro de Entradas por Compras a Proveedores")
-        if not st.session_state.inventario_db.empty:
-            with st.form("form_compra_inv_seguro"):
-                sku_compra = st.selectbox("Seleccionar Producto", options=st.session_state.inventario_db["SKU"] + " - " + st.session_state.inventario_db["Descripción"])
-                cant_compra = st.number_input("Cantidad Comprada", min_value=1.0, value=10.0)
-                nuevo_costo = st.number_input("Nuevo Costo Unitario de Compra ($)", min_value=0.0, value=5.0)
-                
-                procesar_compra = st.form_submit_button("Registrar Entrada al Inventario")
-                if procesar_compra:
-                    sku_code = sku_compra.split(" - ")[0]
-                    idx = st.session_state.inventario_db[st.session_state.inventario_db["SKU"] == sku_code].index[0]
-                    st.session_state.inventario_db.loc[idx, "Stock"] += cant_compra
-                    st.session_state.inventario_db.loc[idx, "Costo ($)"] = nuevo_costo
-                    st.success("¡Entrada registrada con éxito!")
-                    st.rerun()
-
-
 def main_dashboard():
     st.sidebar.title("RI Consultores")
     st.sidebar.markdown(f"**Usuario:** {st.session_state.username}")
@@ -432,7 +438,7 @@ def main_dashboard():
     
     menu = st.sidebar.radio(
         "Navegación Principal",
-        ["Inicio", "Contabilidad", "Facturación DTE", "Planillas", "Inventarios y Activo Fijo"]
+        ["Inicio", "Contabilidad", "Facturación DTE", "Control de Caja", "Inventarios y Activo Fijo"]
     )
     
     if st.sidebar.button("Cerrar Sesión"):
@@ -444,15 +450,15 @@ def main_dashboard():
         st.title("Panel de Control General")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Artículos en Inventario", len(st.session_state.inventario_db))
-        col2.metric("IVA por Pagar", "$0.00")
-        col3.metric("Planilla Activa", "$0.00")
+        col2.metric("Caja Turno", "Abierta 🟢" if st.session_state.caja_sesion["abierta"] else "Cerrada 🔴")
+        col3.metric("IVA por Pagar", "$0.00")
         col4.metric("Estado del Sistema", "Óptimo 🚀")
     elif menu == "Contabilidad":
         render_contabilidad()
     elif menu == "Facturación DTE":
         render_facturacion()
-    elif menu == "Planillas":
-        render_planillas()
+    elif menu == "Control de Caja":
+        render_caja()
     elif menu == "Inventarios y Activo Fijo":
         render_inventarios()
 
