@@ -1,20 +1,25 @@
 {
   "name": "RI Consultores ERP",
   "short_name": "RI ERP",
-  "start_url": ".",
+  "start_url": "./?source=pwa",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#000000",
+  "description": "Sistema ERP integral para la gestión contable y auditoría de RI Consultores.",
   "icons": [
     {
       "src": "icon.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
